@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
 
     const payload = await verifyToken(token)
     if (!payload) return NextResponse.json({ error: 'Token invalide' }, { status: 401 })
+    const userId = payload.userId
 
     const body = await request.json()
     const { schoolYearId } = body
@@ -196,12 +197,12 @@ export async function POST(request: NextRequest) {
       y -= 18
 
       // fetch surveillances for the school year range
-      const surveillances = await prisma.surveillance.findMany({ where: { userId: payload.userId, schoolYearId } })
+        const surveillances = await prisma.surveillance.findMany({ where: { userId, schoolYearId } })
       if (surveillances.length === 0) {
         page.drawText('Aucune surveillance cette semaine.', { x: margin, y, size: 10, font, color: rgb(0.4,0.4,0.4) })
         y -= 16
       } else {
-        surveillances.forEach(s => {
+        surveillances.forEach((s: any) => {
           newPageIfNeeded(16)
           page.drawText(`${new Date(s.date).toLocaleDateString('fr-CA')} ${s.time || ''} — ${s.title}`, { x: margin, y, size: 10, font, color: rgb(0.2,0.2,0.2) })
           y -= 16
