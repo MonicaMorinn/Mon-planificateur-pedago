@@ -44,10 +44,40 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    // Special handling: layoutSections -> merge into quickLinks.layoutSections
+    const layoutSections = body.layoutSections
+
     let settings = await prisma.userSettings.findUnique({ where: { userId: payload.userId } })
     if (!settings) {
-      settings = await prisma.userSettings.create({ data: { userId: payload.userId, ...data } })
+      // create initial settings; merge quickLinks if present
+      const quickLinksObj: any = {}
+      if (data.quickLinks) {
+        try { Object.assign(quickLinksObj, typeof data.quickLinks === 'string' ? JSON.parse(data.quickLinks) : data.quickLinks) } catch {}
+      }
+      if (layoutSections !== undefined) quickLinksObj.layoutSections = layoutSections
+
+      const createData: any = { userId: payload.userId, ...data }
+      if (Object.keys(quickLinksObj).length > 0) createData.quickLinks = JSON.stringify(quickLinksObj)
+
+      settings = await prisma.userSettings.create({ data: createData })
     } else {
+      // update existing settings; merge quickLinks
+      let quickLinksObj: any = {}
+      if (settings.quickLinks) {
+        try { quickLinksObj = typeof settings.quickLinks === 'string' ? JSON.parse(settings.quickLinks) : settings.quickLinks } catch {}
+      }
+      if (data.quickLinks) {
+        try { Object.assign(quickLinksObj, typeof data.quickLinks === 'string' ? JSON.parse(data.quickLinks) : data.quickLinks) } catch {}
+        delete data.quickLinks
+      }
+      if (layoutSections !== undefined) {
+        quickLinksObj.layoutSections = layoutSections
+      }
+
+      if (Object.keys(quickLinksObj).length > 0) {
+        data.quickLinks = JSON.stringify(quickLinksObj)
+      }
+
       settings = await prisma.userSettings.update({ where: { userId: payload.userId }, data })
     }
 
