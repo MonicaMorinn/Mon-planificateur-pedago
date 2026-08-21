@@ -53,6 +53,7 @@ interface Props {
   weekNotesValue?: string
   onWeekNotesChange?: (value: string) => void
   editable?: boolean
+  sectionsOrder?: ('notes' | 'calendar' | 'surveillances')[]
 }
 
 const DAY_INDEXES = [0, 1, 2, 3, 4] // Lundi..Vendredi
@@ -70,7 +71,8 @@ export default function PrintWeekPages({
   fonts = {},
   weekNotesValue,
   onWeekNotesChange,
-  editable = false
+  editable = false,
+  sectionsOrder
 }: Props) {
   const weekDays = getWeekDays(monday)
   const bw = colorMode === 'noir-et-blanc'
@@ -97,8 +99,7 @@ export default function PrintWeekPages({
 
       <div className="flex-1 space-y-1 text-xs overflow-visible">
         {blocksForDay(dayIndex).map(block => (
-          <div key={block.id} className={`${bw ? '' : 'bg-opacity-10'} rounded px-1 py-0.5`}
-            style={!bw ? { backgroundColor: (block.color || '#6366f1') + '22' } : undefined}>
+          <div key={block.id} className={`${bw ? '' : 'bg-opacity-10'} rounded px-1 py-0.5`} style={!bw ? { backgroundColor: (block.color || '#6366f1') + '22' } : undefined}>
             <span className="font-semibold">{block.startTime}-{block.endTime}</span> {block.name}
           </div>
         ))}
@@ -147,6 +148,90 @@ export default function PrintWeekPages({
     return d.getMonth() === monthDate.getMonth() && d.getFullYear() === monthDate.getFullYear()
   })
 
+  const defaultOrder: ('notes' | 'calendar' | 'surveillances')[] = ['calendar', 'notes', 'surveillances']
+  const order = sectionsOrder && sectionsOrder.length ? sectionsOrder : defaultOrder
+
+  function renderSection(key: 'notes' | 'calendar' | 'surveillances') {
+    if (key === 'calendar') {
+      return (
+        <div key={key} className={`border rounded-lg p-2 print-avoid-break ${bw ? 'border-black' : 'border-gray-300'}`}>
+          <div className="text-center font-bold text-sm mb-1">
+            {getMonthName(monthDate.getMonth())} {monthDate.getFullYear()}
+          </div>
+          <div className="grid grid-cols-7 gap-0.5 text-[9px] text-center">
+            {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
+              <div key={i} className="font-semibold">{d}</div>
+            ))}
+            {monthCells.map((day, i) => {
+              const hasEvent = day && allMonthEvents.some(e => new Date(e.date).getDate() === day)
+              const isCurrentWeek = day && weekDays.some(w => w.getDate() === day && w.getMonth() === monthDate.getMonth())
+              return (
+                <div key={i} className={`p-0.5 rounded ${isCurrentWeek ? (bw ? 'border border-black' : 'bg-indigo-100') : ''} ${hasEvent && !bw ? 'font-bold text-primary' : ''}`}>
+                  {day || ''}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )
+    }
+
+    if (key === 'notes') {
+      return (
+        <div key={key} className={`border rounded-lg p-2 print-avoid-break ${bw ? 'border-black' : 'border-gray-300'}`}>
+          <div className="font-bold text-sm mb-1">Notes de la semaine</div>
+          {editable ? (
+            <textarea
+              className="w-full h-24 text-xs border-0 focus:outline-none resize-none no-print-border"
+              value={weekNotesValue || ''}
+              onChange={(e) => onWeekNotesChange && onWeekNotesChange(e.target.value)}
+              placeholder="Écrire ici..."
+            />
+          ) : (
+            <div className="h-24 space-y-2">
+              {[0, 1, 2, 3].map(i => (
+                <div key={i} className={`border-b ${bw ? 'border-black' : 'border-gray-200'}`} style={{ height: '16px' }}>
+                  {weekNotesValue && i === 0 ? <span className="text-xs">{weekNotesValue}</span> : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )
+    }
+
+    // surveillances
+    return (
+      <div key={key} className={`border rounded-lg p-2 print-avoid-break ${bw ? 'border-black' : 'border-gray-300'}`}>
+        <div className="font-bold text-sm mb-1">Surveillances</div>
+        {surveillances.length === 0 ? (
+          <p className="text-xs text-gray-400">Aucune surveillance cette semaine.</p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className={`text-left border-b ${bw ? 'border-black' : 'border-gray-300'}`}>
+                <th className="py-1 pr-2">Date</th>
+                <th className="py-1 pr-2">Heure</th>
+                <th className="py-1 pr-2">Titre</th>
+                <th className="py-1 pr-2">Lieu</th>
+              </tr>
+            </thead>
+            <tbody>
+              {surveillances.map(s => (
+                <tr key={s.id} className={`border-b ${bw ? 'border-black' : 'border-gray-100'}`}>
+                  <td className="py-1 pr-2">{formatDate(new Date(s.date))}</td>
+                  <td className="py-1 pr-2">{s.time || '—'}</td>
+                  <td className="py-1 pr-2">{s.title}</td>
+                  <td className="py-1 pr-2">{s.location || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    )
+  }
+
   return (
     <>
       {/* PAGE 1 : Lundi, Mardi, Mercredi */}
@@ -164,7 +249,7 @@ export default function PrintWeekPages({
         </div>
       </div>
 
-      {/* PAGE 2 : Jeudi, Vendredi, Calendrier du mois, Notes, Surveillances */}
+      {/* PAGE 2 : Jeudi, Vendredi + sections (orderable) */}
       <div className={`print-page bg-white p-4 ${bw ? 'bw-mode' : ''}`}>
         <div className="flex gap-2 mb-3">
           {[3, 4].map(i => (
@@ -172,77 +257,17 @@ export default function PrintWeekPages({
           ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          {/* Calendrier du mois */}
-          <div className={`border rounded-lg p-2 print-avoid-break ${bw ? 'border-black' : 'border-gray-300'}`}>
-            <div className="text-center font-bold text-sm mb-1">
-              {getMonthName(monthDate.getMonth())} {monthDate.getFullYear()}
-            </div>
-            <div className="grid grid-cols-7 gap-0.5 text-[9px] text-center">
-              {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
-                <div key={i} className="font-semibold">{d}</div>
-              ))}
-              {monthCells.map((day, i) => {
-                const hasEvent = day && allMonthEvents.some(e => new Date(e.date).getDate() === day)
-                const isCurrentWeek = day && weekDays.some(w => w.getDate() === day && w.getMonth() === monthDate.getMonth())
-                return (
-                  <div key={i} className={`p-0.5 rounded ${isCurrentWeek ? (bw ? 'border border-black' : 'bg-indigo-100') : ''} ${hasEvent && !bw ? 'font-bold text-primary' : ''}`}>
-                    {day || ''}
-                  </div>
-                )
-              })}
-            </div>
+        <div className="flex gap-3">
+          {/* Left column reserved for large content (kept empty to match original spacious layout) */}
+          <div className="flex-1">
+            {/* Could be used for additional content or left blank to match template */}
+            <div className="h-44 border rounded-lg" />
           </div>
 
-          {/* Notes hebdomadaires */}
-          <div className={`border rounded-lg p-2 print-avoid-break ${bw ? 'border-black' : 'border-gray-300'}`}>
-            <div className="font-bold text-sm mb-1">Notes de la semaine</div>
-            {editable ? (
-              <textarea
-                className="w-full h-24 text-xs border-0 focus:outline-none resize-none no-print-border"
-                value={weekNotesValue || ''}
-                onChange={(e) => onWeekNotesChange && onWeekNotesChange(e.target.value)}
-                placeholder="Écrire ici..."
-              />
-            ) : (
-              <div className="h-24 space-y-2">
-                {[0, 1, 2, 3].map(i => (
-                  <div key={i} className={`border-b ${bw ? 'border-black' : 'border-gray-200'}`} style={{ height: '16px' }}>
-                    {weekNotesValue && i === 0 ? <span className="text-xs">{weekNotesValue}</span> : null}
-                  </div>
-                ))}
-              </div>
-            )}
+          {/* Right column: stack the configurable sections in the chosen order */}
+          <div className="w-1/3 space-y-3">
+            {order.map(k => renderSection(k))}
           </div>
-        </div>
-
-        {/* Surveillances */}
-        <div className={`border rounded-lg p-2 mt-3 print-avoid-break ${bw ? 'border-black' : 'border-gray-300'}`}>
-          <div className="font-bold text-sm mb-1">Surveillances</div>
-          {surveillances.length === 0 ? (
-            <p className="text-xs text-gray-400">Aucune surveillance cette semaine.</p>
-          ) : (
-            <table className="w-full text-xs">
-              <thead>
-                <tr className={`text-left border-b ${bw ? 'border-black' : 'border-gray-300'}`}>
-                  <th className="py-1 pr-2">Date</th>
-                  <th className="py-1 pr-2">Heure</th>
-                  <th className="py-1 pr-2">Titre</th>
-                  <th className="py-1 pr-2">Lieu</th>
-                </tr>
-              </thead>
-              <tbody>
-                {surveillances.map(s => (
-                  <tr key={s.id} className={`border-b ${bw ? 'border-black' : 'border-gray-100'}`}>
-                    <td className="py-1 pr-2">{formatDate(new Date(s.date))}</td>
-                    <td className="py-1 pr-2">{s.time || '—'}</td>
-                    <td className="py-1 pr-2">{s.title}</td>
-                    <td className="py-1 pr-2">{s.location || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
         </div>
       </div>
     </>
