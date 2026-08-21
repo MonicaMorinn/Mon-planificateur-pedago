@@ -1,0 +1,365 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String     @id @default(cuid())
+  email                 String     @unique
+  firstName             String
+  lastName              String
+  password              String
+  schoolId              String?
+  district              String?
+  province              String?
+  level                 String?
+  subjects              String?    // JSON stringified array
+  currentSchoolYearId   String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  schoolProfiles        SchoolProfile[]
+  schoolYears           SchoolYear[]
+  schedules             Schedule[]
+  calendarEvents        CalendarEvent[]
+  plannerEntries        PlannerEntry[]
+  tasks                 Task[]
+  resources             Resource[]
+  classrooms            Classroom[]
+  assessments           Assessment[]
+  sharedResources       SharedResource[] @relation("ResourceOwner")
+  receivedShared        SharedResource[] @relation("ResourceRecipient")
+  notifications         Notification[]
+  settings              UserSettings?
+
+  @@index([email])
+}
+
+model UserSettings {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  theme             String    @default("light")
+  primaryColor      String    @default("#6366f1")
+  dateFormat        String    @default("dd/MM/yyyy")
+  timeFormat        String    @default("24h")
+  firstDayOfWeek    Int       @default(0)
+  showWeekends      Boolean   @default(true)
+  language          String    @default("fr")
+  notificationsEnabled Boolean @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SchoolProfile {
+  id                String    @id @default(cuid())
+  userId            String
+  schoolName        String
+  district          String
+  province          String
+  level             String
+  subjects          String    // JSON stringified array
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model SchoolYear {
+  id                String    @id @default(cuid())
+  userId            String
+  name              String    // "2026-2027"
+  startDate         DateTime
+  endDate           DateTime
+  isActive          Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedules         Schedule[]
+  calendarEvents    CalendarEvent[]
+  plannerEntries    PlannerEntry[]
+  tasks             Task[]
+  assessments       Assessment[]
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+model Schedule {
+  id                String    @id @default(cuid())
+  userId            String
+  schoolYearId      String
+  name              String    // "Horaire régulier", "Horaire du vendredi"
+  description       String?
+  isDefault         Boolean   @default(false)
+  effectiveFromDate DateTime?
+  effectiveToDate   DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolYear        SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+  blocks            ScheduleBlock[]
+
+  @@index([userId])
+  @@index([schoolYearId])
+  @@index([isDefault])
+}
+
+model ScheduleBlock {
+  id                String    @id @default(cuid())
+  scheduleId        String
+  dayOfWeek         Int       // 0 = Monday, 6 = Sunday
+  name              String
+  startTime         String    // "08:10"
+  endTime           String    // "08:55"
+  type              String    // "Cours", "Récréation", "Dîner", etc.
+  subject           String?
+  color             String    @default("#6366f1")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  schedule          Schedule  @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([scheduleId])
+  @@index([dayOfWeek])
+}
+
+model CalendarEvent {
+  id                String    @id @default(cuid())
+  userId            String
+  schoolYearId      String
+  title             String
+  description       String?
+  date              DateTime
+  startTime         String?
+  endTime           String?
+  type              String    // "Officiel", "Personnel", "Réunion", "Sortie", etc.
+  color             String    @default("#6366f1")
+  isAllDay          Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolYear        SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([schoolYearId])
+  @@index([date])
+}
+
+model PlannerEntry {
+  id                String    @id @default(cuid())
+  userId            String
+  schoolYearId      String
+  date              DateTime
+  timeBlock         String    // "08:10-08:55"
+  subject           String
+  title             String
+  objective         String?
+  activity          String?
+  materials         String?
+  homework          String?
+  evaluation        String?
+  notes             String?
+  resources         String?   // JSON stringified array of resource IDs
+  status            String    @default("draft") // "draft", "planned", "completed"
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolYear        SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([schoolYearId])
+  @@index([date])
+}
+
+model Task {
+  id                String    @id @default(cuid())
+  userId            String
+  schoolYearId      String
+  title             String
+  description       String?
+  dueDate           DateTime?
+  priority          String    @default("normal") // "low", "normal", "high", "urgent"
+  category          String?
+  status            String    @default("pending") // "pending", "in_progress", "completed"
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolYear        SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([schoolYearId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+model Resource {
+  id                String    @id @default(cuid())
+  userId            String
+  title             String
+  type              String    // "folder", "file", "link", "note", "activity", "assessment", "worksheet", "image"
+  parentId          String?
+  url               String?
+  content           String?
+  tags              String?   // JSON stringified array
+  isFavorite        Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  children          Resource[] @relation("ResourceParent")
+  parent            Resource?  @relation("ResourceParent", fields: [parentId], references: [id])
+  sharedWith        SharedResource[]
+
+  @@index([userId])
+  @@index([parentId])
+  @@index([isFavorite])
+}
+
+model Classroom {
+  id                String    @id @default(cuid())
+  userId            String
+  name              String
+  level             String?
+  period            String?   // "2026-2027"
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  students          Student[]
+  groups            Group[]
+
+  @@index([userId])
+}
+
+model Student {
+  id                String    @id @default(cuid())
+  classroomId       String
+  firstName         String
+  lastName          String
+  studentNumber     String?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  classroom         Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  assessments       Assessment[]
+  groupMembers      GroupMember[]
+
+  @@index([classroomId])
+}
+
+model Group {
+  id                String    @id @default(cuid())
+  classroomId       String
+  name              String
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  classroom         Classroom @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+  members           GroupMember[]
+
+  @@index([classroomId])
+}
+
+model GroupMember {
+  id                String    @id @default(cuid())
+  groupId           String
+  studentId         String
+  addedAt           DateTime  @default(now())
+
+  group             Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  student           Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@index([studentId])
+}
+
+model Assessment {
+  id                String    @id @default(cuid())
+  userId            String
+  schoolYearId      String
+  title             String
+  subject           String
+  competency        String?
+  date              DateTime
+  classroomId       String?
+  notes             String?
+  rubric            String?   // JSON stringified rubric
+  results           String?   // JSON stringified results
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schoolYear        SchoolYear @relation(fields: [schoolYearId], references: [id], onDelete: Cascade)
+  studentResults    StudentAssessmentResult[]
+
+  @@index([userId])
+  @@index([schoolYearId])
+  @@index([date])
+}
+
+model StudentAssessmentResult {
+  id                String    @id @default(cuid())
+  assessmentId      String
+  studentId         String
+  score            Float?
+  feedback          String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  assessment        Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  student           Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
+  @@index([studentId])
+}
+
+model SharedResource {
+  id                String    @id @default(cuid())
+  resourceId        String
+  ownerId           String
+  recipientId       String
+  type              String    @default("view") // "view", "edit"
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  resource          Resource  @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  owner             User      @relation("ResourceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  recipient         User      @relation("ResourceRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId])
+  @@index([ownerId])
+  @@index([recipientId])
+}
+
+model Notification {
+  id                String    @id @default(cuid())
+  userId            String
+  type              String    // "task", "event", "assessment", "planning"
+  title             String
+  message           String
+  relatedId         String?
+  isRead            Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+}
