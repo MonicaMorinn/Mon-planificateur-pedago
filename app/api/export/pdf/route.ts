@@ -12,6 +12,7 @@ export async function POST(request: NextRequest) {
 
     const payload = await verifyToken(token)
     if (!payload) return NextResponse.json({ error: 'Token invalide' }, { status: 401 })
+    const userId = payload.userId
 
     const body = await request.json()
     const { schoolYearId } = body
@@ -25,10 +26,10 @@ export async function POST(request: NextRequest) {
     if (body.sectionsOrder && Array.isArray(body.sectionsOrder)) sectionsOrder = body.sectionsOrder
     if (body.layoutSections && Array.isArray(body.layoutSections)) sectionsOrder = body.layoutSections
 
-    const user = await prisma.user.findUnique({ where: { id: payload.userId } })
+    const user = await prisma.user.findUnique({ where: { id: userId } })
     const schoolYear = await prisma.schoolYear.findUnique({ where: { id: schoolYearId } })
     const schedule = await prisma.schedule.findFirst({
-      where: { userId: payload.userId, schoolYearId, isDefault: true },
+      where: { userId: userId, schoolYearId, isDefault: true },
       include: { blocks: { orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }] } }
     })
 
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
 
     // If no sectionsOrder from payload, try server settings
     if (!sectionsOrder) {
-      const settings = await prisma.userSettings.findUnique({ where: { userId: payload.userId } })
+      const settings = await prisma.userSettings.findUnique({ where: { userId: userId } })
       if (settings && settings.quickLinks) {
         try {
           const q = typeof settings.quickLinks === 'string' ? JSON.parse(settings.quickLinks) : settings.quickLinks
@@ -196,12 +197,12 @@ export async function POST(request: NextRequest) {
       y -= 18
 
       // fetch surveillances for the school year range
-      const surveillances = await prisma.surveillance.findMany({ where: { userId: payload.userId, schoolYearId } })
+      const surveillances = await prisma.surveillance.findMany({ where: { userId: userId, schoolYearId } })
       if (surveillances.length === 0) {
         page.drawText('Aucune surveillance cette semaine.', { x: margin, y, size: 10, font, color: rgb(0.4,0.4,0.4) })
         y -= 16
       } else {
-        surveillances.forEach(s => {
+        surveillances.forEach((s: any) => {
           newPageIfNeeded(16)
           page.drawText(`${new Date(s.date).toLocaleDateString('fr-CA')} ${s.time || ''} — ${s.title}`, { x: margin, y, size: 10, font, color: rgb(0.2,0.2,0.2) })
           y -= 16

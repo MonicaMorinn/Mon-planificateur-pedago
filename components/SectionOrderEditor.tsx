@@ -1,4 +1,3 @@
-```tsx
 // mon-agenda-pedago/components/SectionOrderEditor.tsx
 'use client'
 
@@ -93,4 +92,3 @@ export default function SectionOrderEditor({ value, onChange }: Props) {
     </div>
   )
 }
-```
