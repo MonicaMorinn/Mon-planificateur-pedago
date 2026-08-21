@@ -20,6 +20,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'schoolYearId requis' }, { status: 400 })
     }
 
+    // Resolve sections order: payload -> user settings.quickLinks.layoutSections -> default
+    let sectionsOrder: ('notes' | 'calendar' | 'surveillances')[] | null = null
+    if (body.sectionsOrder && Array.isArray(body.sectionsOrder)) sectionsOrder = body.sectionsOrder
+    if (body.layoutSections && Array.isArray(body.layoutSections)) sectionsOrder = body.layoutSections
+
     const user = await prisma.user.findUnique({ where: { id: payload.userId } })
     const schoolYear = await prisma.schoolYear.findUnique({ where: { id: schoolYearId } })
     const schedule = await prisma.schedule.findFirst({
@@ -30,6 +35,22 @@ export async function POST(request: NextRequest) {
     if (!user || !schoolYear) {
       return NextResponse.json({ error: 'Données manquantes' }, { status: 404 })
     }
+
+    // If no sectionsOrder from payload, try server settings
+    if (!sectionsOrder) {
+      const settings = await prisma.userSettings.findUnique({ where: { userId: payload.userId } })
+      if (settings && settings.quickLinks) {
+        try {
+          const q = typeof settings.quickLinks === 'string' ? JSON.parse(settings.quickLinks) : settings.quickLinks
+          if (q && Array.isArray(q.layoutSections)) sectionsOrder = q.layoutSections
+        } catch (e) {
+          // ignore
+        }
+      }
+    }
+
+    const defaultOrder: ('notes' | 'calendar' | 'surveillances')[] = ['calendar', 'notes', 'surveillances']
+    const order = sectionsOrder && sectionsOrder.length ? sectionsOrder : defaultOrder
 
     const blocks: any[] = schedule?.blocks || []
 
@@ -124,26 +145,74 @@ export async function POST(request: NextRequest) {
       y -= 10
     }
 
-    // Page de notes
-    newPageIfNeeded(50)
-    y -= 15
-    page.drawLine({
-      start: { x: margin, y }, end: { x: width - margin, y },
-      thickness: 1, color: lightGray
-    })
-    y -= 25
-    page.drawText('Notes', {
-      x: margin, y, size: 14, font: fontBold, color: rgb(0.1, 0.1, 0.1)
-    })
-    y -= 20
+    // Now write remaining sections in the requested order
+    async function writeCalendarSection() {
+      newPageIfNeeded(60)
+      // Mini calendar: build a simple grid at right column
+      // For simplicity in PDF layout, we will render a compact calendar block
+      const monthDate = new Date()
+      const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
+      const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)
+      const daysInMonth = monthEnd.getDate()
 
-    for (let i = 0; i < 15; i++) {
-      newPageIfNeeded(20)
-      page.drawLine({
-        start: { x: margin, y }, end: { x: width - margin, y },
-        thickness: 0.5, color: rgb(0.85, 0.85, 0.85)
-      })
-      y -= 22
+      page.drawText('Calendrier', { x: margin, y, size: 12, font: fontBold, color: rgb(0.1,0.1,0.1) })
+      y -= 18
+
+      // draw day numbers in a simple row-major layout
+      const colWidth = 24
+      const startX = margin
+      let px = startX
+      let py = y
+      for (let d = 1; d <= daysInMonth; d++) {
+        page.drawText(String(d), { x: px, y: py, size: 8, font, color: rgb(0.2,0.2,0.2) })
+        px += colWidth
+        if (px + colWidth > width - margin) {
+          px = startX
+          py -= 12
+          newPageIfNeeded(24)
+        }
+      }
+      y = py - 12
+    }
+
+    async function writeNotesSection() {
+      newPageIfNeeded(40)
+      y -= 15
+      page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 1, color: lightGray })
+      y -= 25
+      page.drawText('Notes', { x: margin, y, size: 14, font: fontBold, color: rgb(0.1,0.1,0.1) })
+      y -= 20
+      for (let i = 0; i < 15; i++) {
+        newPageIfNeeded(20)
+        page.drawLine({ start: { x: margin, y }, end: { x: width - margin, y }, thickness: 0.5, color: rgb(0.85, 0.85, 0.85) })
+        y -= 22
+      }
+    }
+
+    async function writeSurveillancesSection() {
+      newPageIfNeeded(40)
+      y -= 10
+      page.drawText('Surveillances', { x: margin, y, size: 14, font: fontBold, color: rgb(0.1,0.1,0.1) })
+      y -= 18
+
+      // fetch surveillances for the school year range
+      const surveillances = await prisma.surveillance.findMany({ where: { userId: payload.userId, schoolYearId } })
+      if (surveillances.length === 0) {
+        page.drawText('Aucune surveillance cette semaine.', { x: margin, y, size: 10, font, color: rgb(0.4,0.4,0.4) })
+        y -= 16
+      } else {
+        surveillances.forEach(s => {
+          newPageIfNeeded(16)
+          page.drawText(`${new Date(s.date).toLocaleDateString('fr-CA')} ${s.time || ''} — ${s.title}`, { x: margin, y, size: 10, font, color: rgb(0.2,0.2,0.2) })
+          y -= 16
+        })
+      }
+    }
+
+    for (const key of order) {
+      if (key === 'calendar') await writeCalendarSection()
+      if (key === 'notes') await writeNotesSection()
+      if (key === 'surveillances') await writeSurveillancesSection()
     }
 
     const pdfBytes = await pdfDoc.save()
