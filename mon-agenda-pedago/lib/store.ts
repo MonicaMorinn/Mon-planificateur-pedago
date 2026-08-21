@@ -1,4 +1,3 @@
-```typescript
 // mon-agenda-pedago/lib/store.ts
 import { create } from 'zustand'
 
@@ -116,5 +115,3 @@ export const useSettingsStore = create<SettingsStore>((set) => ({
     }
   }
 }))
-
-```
