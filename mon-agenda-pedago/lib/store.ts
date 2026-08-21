@@ -1,3 +1,5 @@
+```typescript
+// mon-agenda-pedago/lib/store.ts
 import { create } from 'zustand'
 
 interface User {
@@ -81,3 +83,38 @@ export const useUIStore = create<UIStore>((set) => ({
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setTheme: (theme) => set({ theme }),
 }))
+
+// Settings store: persist sections order and other lightweight UI settings
+type SectionKey = 'notes' | 'calendar' | 'surveillances'
+interface SettingsStore {
+  sectionsOrder: SectionKey[]
+  setSectionsOrder: (order: SectionKey[]) => void
+  loadFromLocal: () => void
+}
+
+const DEFAULT_ORDER: SectionKey[] = ['calendar', 'notes', 'surveillances']
+
+export const useSettingsStore = create<SettingsStore>((set) => ({
+  sectionsOrder: DEFAULT_ORDER,
+  setSectionsOrder: (order) => {
+    set({ sectionsOrder: order })
+    try {
+      localStorage.setItem('agenda.sectionsOrder', JSON.stringify(order))
+    } catch (e) {
+      console.error('Failed to persist sectionsOrder', e)
+    }
+  },
+  loadFromLocal: () => {
+    try {
+      const raw = localStorage.getItem('agenda.sectionsOrder')
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed)) set({ sectionsOrder: parsed })
+      }
+    } catch (e) {
+      console.error('Failed to load sectionsOrder', e)
+    }
+  }
+}))
+
+```
