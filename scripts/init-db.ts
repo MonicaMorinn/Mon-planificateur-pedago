@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS "DsfsEvent" (
   "title" TEXT NOT NULL,
   "date" DATETIME NOT NULL,
   "description" TEXT,
+  "type" TEXT NOT NULL DEFAULT 'autre',
   "createdAt" DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY ("schoolYearId") REFERENCES "SchoolYear"("id") ON DELETE CASCADE
 );

@@ -91,6 +91,7 @@ function ensureSchema(database: Database.Database) {
       "title" TEXT NOT NULL,
       "date" DATETIME NOT NULL,
       "description" TEXT,
+      "type" TEXT NOT NULL DEFAULT 'autre',
       "createdAt" DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY ("schoolYearId") REFERENCES "SchoolYear"("id") ON DELETE CASCADE
     );
@@ -319,6 +320,26 @@ function ensureSchema(database: Database.Database) {
     CREATE INDEX IF NOT EXISTS "Notification_userId_idx" ON "Notification"("userId");
   `)
 }
+
+// Migrations légères et idempotentes pour les bases déjà créées avant
+// l'ajout de nouvelles colonnes. Chaque étape vérifie d'abord si la colonne
+// existe déjà (via PRAGMA table_info) avant de tenter un ALTER TABLE, pour
+// ne jamais planter sur une base qui a déjà été migrée.
+function runMigrations(database: Database.Database) {
+  function hasColumn(table: string, column: string): boolean {
+    const cols = database.prepare(`PRAGMA table_info("${table}")`).all() as Array<{ name: string }>
+    return cols.some(c => c.name === column)
+  }
+
+  try {
+    if (!hasColumn('DsfsEvent', 'type')) {
+      database.exec(`ALTER TABLE "DsfsEvent" ADD COLUMN "type" TEXT NOT NULL DEFAULT 'autre'`)
+    }
+  } catch (e) {
+    console.error('Migration DsfsEvent.type échouée:', e)
+  }
+}
+
 let db: Database.Database | null = null
 
 export function getDb() {
@@ -332,6 +353,7 @@ export function getDb() {
       // entre les cold starts sur cette configuration (voir README).
       ensureSchema(db)
     }
+    runMigrations(db)
   }
   return db
 }

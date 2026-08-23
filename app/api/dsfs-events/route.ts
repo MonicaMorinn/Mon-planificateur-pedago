@@ -43,11 +43,14 @@ export async function POST(request: NextRequest) {
     if (!payload) return NextResponse.json({ error: 'Token invalide' }, { status: 401 })
 
     const body = await request.json()
-    const { schoolYearId, title, date, description } = body
+    const { schoolYearId, title, date, description, type } = body
 
     if (!schoolYearId || !title || !date) {
       return NextResponse.json({ error: 'Données incomplètes' }, { status: 400 })
     }
+
+    const VALID_TYPES = ['conge', 'pedagogique', 'administrative', 'perfectionnement', 'rentree-progressive', 'autre']
+    const eventType = VALID_TYPES.includes(type) ? type : 'autre'
 
     const year = await prisma.schoolYear.findUnique({ where: { id: schoolYearId } })
     if (!year || year.userId !== payload.userId) {
@@ -59,11 +62,51 @@ export async function POST(request: NextRequest) {
         schoolYearId,
         title,
         date: new Date(date),
-        description: description || null
+        description: description || null,
+        type: eventType
       }
     })
 
     return NextResponse.json({ event }, { status: 201 })
+  } catch (error) {
+    console.error('Error:', error)
+    return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const token = getTokenFromRequest(request) || request.cookies.get('token')?.value
+    if (!token) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 })
+    const payload = await verifyToken(token)
+    if (!payload) return NextResponse.json({ error: 'Token invalide' }, { status: 401 })
+
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get('eventId')
+    if (!id) return NextResponse.json({ error: 'eventId requis' }, { status: 400 })
+
+    const existing = await prisma.dsfsEvent.findUnique({ where: { id } })
+    if (!existing) return NextResponse.json({ error: 'Introuvable' }, { status: 404 })
+
+    const year = await prisma.schoolYear.findUnique({ where: { id: existing.schoolYearId } })
+    if (!year || year.userId !== payload.userId) {
+      return NextResponse.json({ error: 'Non autorisé' }, { status: 403 })
+    }
+
+    const body = await request.json()
+    const VALID_TYPES = ['conge', 'pedagogique', 'administrative', 'perfectionnement', 'rentree-progressive', 'autre']
+
+    const event = await prisma.dsfsEvent.update({
+      where: { id },
+      data: {
+        ...(body.title !== undefined && { title: body.title }),
+        ...(body.date !== undefined && { date: new Date(body.date) }),
+        ...(body.description !== undefined && { description: body.description }),
+        ...(body.type !== undefined && VALID_TYPES.includes(body.type) && { type: body.type })
+      }
+    })
+
+    return NextResponse.json({ event })
   } catch (error) {
     console.error('Error:', error)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

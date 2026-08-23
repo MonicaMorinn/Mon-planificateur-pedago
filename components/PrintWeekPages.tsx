@@ -1,6 +1,7 @@
 'use client'
 
 import { getDayName, getMonthName, formatDate, getWeekDays, isSameDay, addDays } from '@/lib/utils'
+import { HOLIDAY_GRAY, HOLIDAY_GRAY_BORDER } from '@/lib/colors'
 
 interface ScheduleBlock {
   id: string
@@ -19,6 +20,7 @@ interface CalEvent {
   date: string
   startTime?: string
   color?: string
+  type?: string
 }
 
 interface PlannerEntry {
@@ -39,6 +41,8 @@ interface Surveillance {
   notes?: string
 }
 
+type SectionKey = 'notes' | 'calendar' | 'surveillances'
+
 interface Props {
   monday: Date
   schedule: { blocks: ScheduleBlock[] } | null
@@ -53,10 +57,22 @@ interface Props {
   weekNotesValue?: string
   onWeekNotesChange?: (value: string) => void
   editable?: boolean
-  sectionsOrder?: ('notes' | 'calendar' | 'surveillances')[]
+  sectionsOrder?: SectionKey[]
 }
 
 const DAY_INDEXES = [0, 1, 2, 3, 4] // Lundi..Vendredi
+
+// Types de blocs qui occupent toute la largeur (partagés entre toutes les
+// journées affichées sur la page), comme dans le template original :
+// récréation, dîners multiples, période d'organisation.
+const FULL_WIDTH_TYPES = ['Récréation', 'Dîner', 'Organisation', 'Transition', 'Accueil']
+
+// Convertit "08:15" -> "8h15", "09:00" -> "9h", "14:55" -> "14h55"
+function formatTimeFr(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(':')
+  const h = parseInt(hStr, 10)
+  return mStr === '00' ? `${h}h` : `${h}h${mStr}`
+}
 
 export default function PrintWeekPages({
   monday,
@@ -67,12 +83,12 @@ export default function PrintWeekPages({
   surveillances,
   notesLocation,
   colorMode,
-  primaryColor = '#6366f1',
+  primaryColor = '#E79897',
   fonts = {},
   weekNotesValue,
   onWeekNotesChange,
   editable = false,
-  sectionsOrder
+  sectionsOrder = ['calendar', 'notes', 'surveillances']
 }: Props) {
   const weekDays = getWeekDays(monday)
   const bw = colorMode === 'noir-et-blanc'
@@ -87,53 +103,184 @@ export default function PrintWeekPages({
   const entriesForDay = (day: Date) =>
     plannerEntries.filter(e => isSameDay(new Date(e.date), day))
 
+  // Types DSFS qui indiquent une journée sans élèves : toute la colonne
+  // doit alors être grisée (gris très pâle), à l'écran et à l'impression.
+  const NO_STUDENT_TYPES = ['conge', 'pedagogique', 'administrative', 'perfectionnement']
+  const isDayOff = (day: Date) =>
+    dsfsForDay(day).some(e => e.type && NO_STUDENT_TYPES.includes(e.type))
+
   const showBottomNotes = notesLocation === 'sous' || notesLocation === 'les-deux'
   const showSideNotes = notesLocation === 'cote' || notesLocation === 'les-deux'
 
-  const DayColumn = ({ day, dayIndex }: { day: Date; dayIndex: number }) => (
-    <div className={`flex-1 border ${bw ? 'border-black' : 'border-gray-300'} rounded-lg p-2 flex flex-col min-h-[220px]`}>
-      <div className={`text-center font-bold mb-1 pb-1 border-b ${bw ? 'border-black' : 'border-gray-300'}`} style={!bw ? { color: primaryColor } : undefined}>
-        <div className="text-sm" style={fonts.days ? { fontFamily: fonts.days } : undefined}>{getDayName(dayIndex)}</div>
-        <div className="text-xs font-normal" style={fonts.dates ? { fontFamily: fonts.dates } : undefined}>{formatDate(day)}</div>
-      </div>
+  const borderColor = bw ? 'border-black' : 'border-gray-300'
+  const headerBg = bw ? '#fff' : '#F7F5F1'
 
-      <div className="flex-1 space-y-1 text-xs overflow-visible">
-        {blocksForDay(dayIndex).map(block => (
-          <div key={block.id} className={`${bw ? '' : 'bg-opacity-10'} rounded px-1 py-0.5`} style={!bw ? { backgroundColor: (block.color || '#6366f1') + '22' } : undefined}>
-            <span className="font-semibold">{block.startTime}-{block.endTime}</span> {block.name}
-          </div>
-        ))}
-        {dsfsForDay(day).map(e => (
-          <div key={e.id} className={`px-1 py-0.5 rounded font-semibold ${bw ? 'border border-black' : 'bg-pink-100 text-pink-800'}`}>
-            🏫 {e.title}
-          </div>
-        ))}
-        {eventsForDay(day).map(e => (
-          <div key={e.id} className={`px-1 py-0.5 rounded ${bw ? 'border border-black' : 'bg-indigo-100 text-indigo-800'}`}>
-            {e.startTime ? `${e.startTime} ` : ''}{e.title}
-          </div>
-        ))}
-        {entriesForDay(day).map(e => (
-          <div key={e.id} className={`px-1 py-0.5 ${bw ? '' : 'text-gray-700'}`}>
-            📝 <span className="font-medium">{e.subject}:</span> {e.title}
-          </div>
-        ))}
-      </div>
+  // ── Construction des rangées du tableau horaire ──────────────────────
+  interface Row {
+    startTime: string
+    endTime: string
+    name: string
+    type: string
+    fullWidth: boolean
+    perDay: Record<number, ScheduleBlock | undefined>
+  }
 
-      {showBottomNotes && (
-        <div className={`mt-2 pt-1 border-t ${bw ? 'border-black' : 'border-gray-200'}`}>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Notes</div>
-          <div className="h-16 space-y-1.5">
+  function buildRows(dayIndexes: number[]): Row[] {
+    const allBlocks = dayIndexes.flatMap(di => blocksForDay(di))
+    const startTimes = Array.from(new Set(allBlocks.map(b => b.startTime))).sort()
+
+    return startTimes.map(st => {
+      const perDay: Record<number, ScheduleBlock | undefined> = {}
+      dayIndexes.forEach(di => {
+        perDay[di] = blocksForDay(di).find(b => b.startTime === st)
+      })
+      const present = Object.values(perDay).filter(Boolean) as ScheduleBlock[]
+      const reference = present[0]
+      const fullWidth = present.length > 0 && present.every(b => FULL_WIDTH_TYPES.includes(b.type))
+      return {
+        startTime: st,
+        endTime: reference?.endTime || st,
+        name: reference?.name || '',
+        type: reference?.type || '',
+        fullWidth,
+        perDay
+      }
+    })
+  }
+
+  const ScheduleTable = ({ dayIndexes }: { dayIndexes: number[] }) => {
+    const rows = buildRows(dayIndexes)
+    const cols = dayIndexes.length
+
+    if (rows.length === 0) {
+      return (
+        <div className={`border ${borderColor} rounded p-3 text-center text-xs text-gray-400`}>
+          Aucun horaire défini pour ces journées. Configure ton horaire dans « Horaire ».
+        </div>
+      )
+    }
+
+    return (
+      <table className="w-full border-collapse text-xs table-fixed">
+        <thead>
+          <tr>
+            <th className={`border ${borderColor} p-1 w-[70px]`} style={{ backgroundColor: headerBg }}></th>
+            {dayIndexes.map(di => {
+              const day = weekDays[di]
+              const dayOff = isDayOff(day)
+              return (
+                <th
+                  key={di}
+                  className={`border ${borderColor} p-1 text-center font-bold`}
+                  style={{
+                    backgroundColor: dayOff ? HOLIDAY_GRAY : headerBg,
+                    color: !bw ? primaryColor : undefined
+                  }}
+                >
+                  <div style={fonts.days ? { fontFamily: fonts.days } : undefined}>{getDayName(di)}</div>
+                  <div className="font-normal text-[10px]" style={fonts.dates ? { fontFamily: fonts.dates } : undefined}>
+                    {day.getDate()}
+                  </div>
+                </th>
+              )
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => {
+            if (row.fullWidth) {
+              return (
+                <tr key={ri}>
+                  <td
+                    colSpan={cols + 1}
+                    className={`border ${borderColor} px-2 py-1 text-center font-semibold`}
+                    style={{ backgroundColor: headerBg }}
+                  >
+                    {row.name} — {formatTimeFr(row.startTime)} à {formatTimeFr(row.endTime)}
+                  </td>
+                </tr>
+              )
+            }
+
+            return (
+              <tr key={ri}>
+                <td className={`border ${borderColor} p-1 align-top`} style={{ backgroundColor: headerBg }}>
+                  <div className="font-semibold leading-tight" style={fonts.schedule ? { fontFamily: fonts.schedule } : undefined}>{row.name}</div>
+                  <div className="text-[9px] text-gray-600 leading-tight">
+                    {formatTimeFr(row.startTime)} à {formatTimeFr(row.endTime)}
+                  </div>
+                </td>
+                {dayIndexes.map(di => {
+                  const day = weekDays[di]
+                  const dayOff = isDayOff(day)
+                  const block = row.perDay[di]
+                  const dayEntries = entriesForDay(day).filter(e => e.timeBlock === `${row.startTime}-${row.endTime}`)
+                  return (
+                    <td
+                      key={di}
+                      className={`border ${borderColor} p-1 align-top h-14`}
+                      style={dayOff ? { backgroundColor: HOLIDAY_GRAY } : undefined}
+                    >
+                      {block?.subject && (
+                        <div className="text-[10px] font-medium mb-0.5">{block.subject}</div>
+                      )}
+                      {dayEntries.map(e => (
+                        <div key={e.id} className="text-[10px] text-gray-700">{e.title}</div>
+                      ))}
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    )
+  }
+
+  const DayInfoStrip = ({ dayIndexes }: { dayIndexes: number[] }) => {
+    const hasAny = dayIndexes.some(di => dsfsForDay(weekDays[di]).length > 0 || eventsForDay(weekDays[di]).length > 0)
+    if (!hasAny) return null
+    return (
+      <div className="flex gap-1 mt-1">
+        {dayIndexes.map(di => {
+          const day = weekDays[di]
+          return (
+            <div key={di} className="flex-1 text-[9px] space-y-0.5">
+              {dsfsForDay(day).map(e => (
+                <div key={e.id} className={`px-1 py-0.5 rounded font-semibold ${bw ? 'border border-black' : 'bg-pink-100 text-pink-800'}`}>
+                  🏫 {e.title}
+                </div>
+              ))}
+              {eventsForDay(day).map(e => (
+                <div key={e.id} className={`px-1 py-0.5 rounded ${bw ? 'border border-black' : 'bg-indigo-100 text-indigo-800'}`}>
+                  {e.startTime ? `${e.startTime} ` : ''}{e.title}
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  const BottomNotes = ({ dayIndexes }: { dayIndexes: number[] }) => {
+    if (!showBottomNotes) return null
+    return (
+      <div className="flex gap-1 mt-2">
+        {dayIndexes.map(di => (
+          <div key={di} className={`flex-1 border-t pt-1 ${bw ? 'border-black' : 'border-gray-200'}`}>
+            <div className="text-[9px] uppercase tracking-wide text-gray-500 mb-1">Notes</div>
             {[0, 1, 2].map(i => (
-              <div key={i} className={`border-b bw-keep-line ${bw ? 'border-black' : 'border-gray-200'}`} style={{ height: '18px' }} />
+              <div key={i} className={`border-b bw-keep-line ${bw ? 'border-black' : 'border-gray-200'}`} style={{ height: '16px' }} />
             ))}
           </div>
-        </div>
-      )}
-    </div>
-  )
+        ))}
+      </div>
+    )
+  }
 
-  // Mini calendrier du mois (mois du lundi de la semaine)
+  // ── Mini calendrier du mois ────────────────────────────────────────
   const monthDate = addDays(monday, 3)
   const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
   const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)
@@ -148,88 +295,89 @@ export default function PrintWeekPages({
     return d.getMonth() === monthDate.getMonth() && d.getFullYear() === monthDate.getFullYear()
   })
 
-  const defaultOrder: ('notes' | 'calendar' | 'surveillances')[] = ['calendar', 'notes', 'surveillances']
-  const order = sectionsOrder && sectionsOrder.length ? sectionsOrder : defaultOrder
-
-  function renderSection(key: 'notes' | 'calendar' | 'surveillances') {
-    if (key === 'calendar') {
-      return (
-        <div key={key} className={`border rounded-lg p-2 print-avoid-break ${bw ? 'border-black' : 'border-gray-300'}`}>
-          <div className="text-center font-bold text-sm mb-1">
-            {getMonthName(monthDate.getMonth())} {monthDate.getFullYear()}
-          </div>
-          <div className="grid grid-cols-7 gap-0.5 text-[9px] text-center">
-            {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
-              <div key={i} className="font-semibold">{d}</div>
-            ))}
-            {monthCells.map((day, i) => {
-              const hasEvent = day && allMonthEvents.some(e => new Date(e.date).getDate() === day)
-              const isCurrentWeek = day && weekDays.some(w => w.getDate() === day && w.getMonth() === monthDate.getMonth())
-              return (
-                <div key={i} className={`p-0.5 rounded ${isCurrentWeek ? (bw ? 'border border-black' : 'bg-indigo-100') : ''} ${hasEvent && !bw ? 'font-bold text-primary' : ''}`}>
-                  {day || ''}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )
-    }
-
-    if (key === 'notes') {
-      return (
-        <div key={key} className={`border rounded-lg p-2 print-avoid-break ${bw ? 'border-black' : 'border-gray-300'}`}>
-          <div className="font-bold text-sm mb-1">Notes de la semaine</div>
-          {editable ? (
-            <textarea
-              className="w-full h-24 text-xs border-0 focus:outline-none resize-none no-print-border"
-              value={weekNotesValue || ''}
-              onChange={(e) => onWeekNotesChange && onWeekNotesChange(e.target.value)}
-              placeholder="Écrire ici..."
-            />
-          ) : (
-            <div className="h-24 space-y-2">
-              {[0, 1, 2, 3].map(i => (
-                <div key={i} className={`border-b ${bw ? 'border-black' : 'border-gray-200'}`} style={{ height: '16px' }}>
-                  {weekNotesValue && i === 0 ? <span className="text-xs">{weekNotesValue}</span> : null}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )
-    }
-
-    // surveillances
-    return (
-      <div key={key} className={`border rounded-lg p-2 print-avoid-break ${bw ? 'border-black' : 'border-gray-300'}`}>
-        <div className="font-bold text-sm mb-1">Surveillances</div>
-        {surveillances.length === 0 ? (
-          <p className="text-xs text-gray-400">Aucune surveillance cette semaine.</p>
-        ) : (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className={`text-left border-b ${bw ? 'border-black' : 'border-gray-300'}`}>
-                <th className="py-1 pr-2">Date</th>
-                <th className="py-1 pr-2">Heure</th>
-                <th className="py-1 pr-2">Titre</th>
-                <th className="py-1 pr-2">Lieu</th>
-              </tr>
-            </thead>
-            <tbody>
-              {surveillances.map(s => (
-                <tr key={s.id} className={`border-b ${bw ? 'border-black' : 'border-gray-100'}`}>
-                  <td className="py-1 pr-2">{formatDate(new Date(s.date))}</td>
-                  <td className="py-1 pr-2">{s.time || '—'}</td>
-                  <td className="py-1 pr-2">{s.title}</td>
-                  <td className="py-1 pr-2">{s.location || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+  const CalendarSection = () => (
+    <div className={`border ${borderColor} rounded p-2 print-avoid-break`}>
+      <div className="text-center font-bold text-sm mb-1" style={fonts.calendar ? { fontFamily: fonts.calendar } : undefined}>
+        {getMonthName(monthDate.getMonth())} {monthDate.getFullYear()}
       </div>
-    )
+      <div className="grid grid-cols-7 gap-0.5 text-[9px] text-center">
+        {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
+          <div key={i} className="font-semibold">{d}</div>
+        ))}
+        {monthCells.map((day, i) => {
+          const hasEvent = day && allMonthEvents.some(e => new Date(e.date).getDate() === day)
+          const isCurrentWeek = day && weekDays.some(w => w.getDate() === day && w.getMonth() === monthDate.getMonth())
+          return (
+            <div
+              key={i}
+              className={`p-0.5 rounded ${isCurrentWeek ? (bw ? 'border border-black' : 'bg-indigo-100') : ''} ${hasEvent && !bw ? 'font-bold' : ''}`}
+              style={hasEvent && !bw ? { color: primaryColor } : undefined}
+            >
+              {day || ''}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  const NotesSection = () => (
+    <div className={`border ${borderColor} rounded p-2 print-avoid-break flex-1`}>
+      <div className="font-bold text-sm mb-1" style={fonts.titles ? { fontFamily: fonts.titles } : undefined}>Notes de la semaine</div>
+      {editable ? (
+        <textarea
+          className="w-full h-24 text-xs border-0 focus:outline-none resize-none no-print-border"
+          style={fonts.notes ? { fontFamily: fonts.notes } : undefined}
+          value={weekNotesValue || ''}
+          onChange={(e) => onWeekNotesChange && onWeekNotesChange(e.target.value)}
+          placeholder="Écrire ici..."
+        />
+      ) : (
+        <div className="h-24 space-y-2">
+          {[0, 1, 2, 3].map(i => (
+            <div key={i} className={`border-b ${bw ? 'border-black' : 'border-gray-200'}`} style={{ height: '16px' }}>
+              {weekNotesValue && i === 0 ? <span className="text-xs">{weekNotesValue}</span> : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
+  const SurveillancesSection = () => (
+    <div className={`border ${borderColor} rounded p-2 print-avoid-break`}>
+      <div className="font-bold text-sm mb-1" style={fonts.titles ? { fontFamily: fonts.titles } : undefined}>Surveillances</div>
+      {surveillances.length === 0 ? (
+        <p className="text-xs text-gray-400">Aucune surveillance cette semaine.</p>
+      ) : (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className={`text-left border-b ${bw ? 'border-black' : 'border-gray-300'}`}>
+              <th className="py-1 pr-2">Date</th>
+              <th className="py-1 pr-2">Heure</th>
+              <th className="py-1 pr-2">Titre</th>
+              <th className="py-1 pr-2">Lieu</th>
+            </tr>
+          </thead>
+          <tbody>
+            {surveillances.map(s => (
+              <tr key={s.id} className={`border-b ${bw ? 'border-black' : 'border-gray-100'}`}>
+                <td className="py-1 pr-2">{formatDate(new Date(s.date))}</td>
+                <td className="py-1 pr-2">{s.time || '—'}</td>
+                <td className="py-1 pr-2">{s.title}</td>
+                <td className="py-1 pr-2">{s.location || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+
+  const SECTION_COMPONENTS: Record<SectionKey, () => JSX.Element> = {
+    calendar: CalendarSection,
+    notes: NotesSection,
+    surveillances: SurveillancesSection
   }
 
   return (
@@ -237,36 +385,30 @@ export default function PrintWeekPages({
       {/* PAGE 1 : Lundi, Mardi, Mercredi */}
       <div className={`print-page bg-white p-4 ${bw ? 'bw-mode' : ''}`}>
         <div className="flex items-center justify-between mb-3">
-          <h2 className={`text-lg font-bold ${bw ? '' : 'text-primary'}`}>Mon Agenda Pédago</h2>
+          <h2 className="text-lg font-bold" style={!bw ? { color: primaryColor } : undefined}>Mon Agenda Pédago</h2>
           <span className="text-sm text-gray-600">
             Semaine du {formatDate(weekDays[0])} au {formatDate(weekDays[4])}
           </span>
         </div>
-        <div className="flex gap-2">
-          {[0, 1, 2].map(i => (
-            <DayColumn key={i} day={weekDays[i]} dayIndex={DAY_INDEXES[i]} />
-          ))}
-        </div>
+        <ScheduleTable dayIndexes={[0, 1, 2]} />
+        <DayInfoStrip dayIndexes={[0, 1, 2]} />
+        <BottomNotes dayIndexes={[0, 1, 2]} />
       </div>
 
-      {/* PAGE 2 : Jeudi, Vendredi + sections (orderable) */}
+      {/* PAGE 2 : Jeudi, Vendredi + colonne latérale (ordre personnalisable) */}
       <div className={`print-page bg-white p-4 ${bw ? 'bw-mode' : ''}`}>
-        <div className="flex gap-2 mb-3">
-          {[3, 4].map(i => (
-            <DayColumn key={i} day={weekDays[i]} dayIndex={DAY_INDEXES[i]} />
-          ))}
-        </div>
-
         <div className="flex gap-3">
-          {/* Left column reserved for large content (kept empty to match original spacious layout) */}
-          <div className="flex-1">
-            {/* Could be used for additional content or left blank to match template */}
-            <div className="h-44 border rounded-lg" />
+          <div className="flex-[2]">
+            <ScheduleTable dayIndexes={[3, 4]} />
+            <DayInfoStrip dayIndexes={[3, 4]} />
+            <BottomNotes dayIndexes={[3, 4]} />
           </div>
 
-          {/* Right column: stack the configurable sections in the chosen order */}
-          <div className="w-1/3 space-y-3">
-            {order.map(k => renderSection(k))}
+          <div className="flex-1 flex flex-col gap-2">
+            {sectionsOrder.map(key => {
+              const Section = SECTION_COMPONENTS[key]
+              return Section ? <Section key={key} /> : null
+            })}
           </div>
         </div>
       </div>

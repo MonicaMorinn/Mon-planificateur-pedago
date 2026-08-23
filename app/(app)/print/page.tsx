@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/lib/store'
+import { useAuthStore, useSettingsStore } from '@/lib/store'
 import Layout from '@/components/Layout'
 import PrintWeekPages from '@/components/PrintWeekPages'
 import toast from 'react-hot-toast'
@@ -20,6 +20,11 @@ interface SchoolYear {
 export default function PrintPage() {
   const router = useRouter()
   const { user, token } = useAuthStore()
+  const { sectionsOrder, loadFromLocal } = useSettingsStore()
+
+  useEffect(() => {
+    loadFromLocal()
+  }, [])
 
   const [schoolYears, setSchoolYears] = useState<SchoolYear[]>([])
   const [schoolYearId, setSchoolYearId] = useState('')
@@ -319,6 +324,7 @@ export default function PrintPage() {
               colorMode={colorMode}
               primaryColor={primaryColor}
               fonts={fontChoices}
+              sectionsOrder={sectionsOrder}
             />
           ))}
         </div>
