@@ -83,13 +83,13 @@ export default function Layout({ children, authenticated = false }: LayoutProps)
       <div
         className={`${
           sidebarOpen ? 'w-64' : 'w-0'
-        } fixed md:relative transition-all duration-300 h-full bg-white shadow-lg z-40 overflow-hidden`}
+        } fixed md:relative transition-all duration-300 h-full bg-white shadow-lg z-40 overflow-hidden flex flex-col`}
       >
-        <div className="p-6 border-b">
+        <div className="p-6 border-b flex-shrink-0">
           <h1 className="text-xl font-bold text-primary whitespace-nowrap">Mon Agenda Pédago</h1>
         </div>
 
-        <nav className="p-6 space-y-2 overflow-y-auto h-[calc(100vh-100px)]">
+        <nav className="flex-1 min-h-0 overflow-y-auto p-6 space-y-2">
           {navItems.map((item) => {
             const Icon = item.icon
             return (
@@ -106,7 +106,7 @@ export default function Layout({ children, authenticated = false }: LayoutProps)
           })}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 p-6 border-t bg-white">
+        <div className="flex-shrink-0 p-6 border-t bg-white">
           <div className="mb-4 pb-4 border-b">
             <p className="text-sm font-semibold text-gray-700 truncate">
               {user?.firstName} {user?.lastName}
