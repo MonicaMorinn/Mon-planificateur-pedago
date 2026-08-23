@@ -305,15 +305,29 @@ export default function PrintWeekPages({
           <div key={i} className="font-semibold">{d}</div>
         ))}
         {monthCells.map((day, i) => {
-          const hasEvent = day && allMonthEvents.some(e => new Date(e.date).getDate() === day)
-          const isCurrentWeek = day && weekDays.some(w => w.getDate() === day && w.getMonth() === monthDate.getMonth())
+          if (!day) return <div key={i} />
+          const cellDate = new Date(monthDate.getFullYear(), monthDate.getMonth(), day)
+          // Trois raisons réelles de mettre une date en évidence, rien d'autre :
+          const dayIsOff = dsfsForDay(cellDate).some(e => e.type && NO_STUDENT_TYPES.includes(e.type))
+          const isCurrentWeek = weekDays.some(w => w.getDate() === day && w.getMonth() === monthDate.getMonth() && w.getFullYear() === monthDate.getFullYear())
+          const hasOfficialEvent = dsfsForDay(cellDate).length > 0 && !dayIsOff
+
           return (
             <div
               key={i}
-              className={`p-0.5 rounded ${isCurrentWeek ? (bw ? 'border border-black' : 'bg-indigo-100') : ''} ${hasEvent && !bw ? 'font-bold' : ''}`}
-              style={hasEvent && !bw ? { color: primaryColor } : undefined}
+              className={`relative p-0.5 rounded ${isCurrentWeek ? `border ${bw ? 'border-black' : ''}` : ''}`}
+              style={{
+                backgroundColor: dayIsOff ? HOLIDAY_GRAY : undefined,
+                borderColor: isCurrentWeek && !bw ? primaryColor : undefined
+              }}
             >
-              {day || ''}
+              {day}
+              {hasOfficialEvent && (
+                <span
+                  className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
+                  style={{ backgroundColor: bw ? '#000' : primaryColor }}
+                />
+              )}
             </div>
           )
         })}
@@ -344,33 +358,44 @@ export default function PrintWeekPages({
     </div>
   )
 
+  const surveillanceWeekdays = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi']
+  const surveillancesForWeekdayIndex = (di: number) => {
+    const day = weekDays[di]
+    return surveillances.filter(s => isSameDay(new Date(s.date), day))
+  }
+
   const SurveillancesSection = () => (
     <div className={`border ${borderColor} rounded p-2 print-avoid-break`}>
       <div className="font-bold text-sm mb-1" style={fonts.titles ? { fontFamily: fonts.titles } : undefined}>Surveillances</div>
-      {surveillances.length === 0 ? (
-        <p className="text-xs text-gray-400">Aucune surveillance cette semaine.</p>
-      ) : (
-        <table className="w-full text-xs">
-          <thead>
-            <tr className={`text-left border-b ${bw ? 'border-black' : 'border-gray-300'}`}>
-              <th className="py-1 pr-2">Date</th>
-              <th className="py-1 pr-2">Heure</th>
-              <th className="py-1 pr-2">Titre</th>
-              <th className="py-1 pr-2">Lieu</th>
-            </tr>
-          </thead>
-          <tbody>
-            {surveillances.map(s => (
-              <tr key={s.id} className={`border-b ${bw ? 'border-black' : 'border-gray-100'}`}>
-                <td className="py-1 pr-2">{formatDate(new Date(s.date))}</td>
-                <td className="py-1 pr-2">{s.time || '—'}</td>
-                <td className="py-1 pr-2">{s.title}</td>
-                <td className="py-1 pr-2">{s.location || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <div className="space-y-1 text-xs">
+        {surveillanceWeekdays.map((label, di) => {
+          const dayEntries = surveillancesForWeekdayIndex(di)
+          return (
+            <div key={label} className={`flex gap-1 border-b ${bw ? 'border-black' : 'border-gray-200'} pb-1`}>
+              <span className="font-semibold w-14 flex-shrink-0">{label}</span>
+              <span className="flex-1 text-gray-700">
+                {dayEntries.length > 0
+                  ? dayEntries.map(s => `${s.time ? s.time + ' ' : ''}${s.title}${s.location ? ' (' + s.location + ')' : ''}`).join(', ')
+                  : ''}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  const CliniquesSection = () => (
+    <div className={`border ${borderColor} rounded p-2 print-avoid-break`}>
+      <div className="font-bold text-sm mb-1" style={fonts.titles ? { fontFamily: fonts.titles } : undefined}>Cliniques / évaluations</div>
+      <div className="space-y-2 text-xs">
+        {[0, 1, 2, 3, 4].map(i => (
+          <div key={i} className="flex items-center gap-1">
+            <span>→</span>
+            <div className={`flex-1 border-b bw-keep-line ${bw ? 'border-black' : 'border-gray-200'}`} style={{ height: '14px' }} />
+          </div>
+        ))}
+      </div>
     </div>
   )
 
@@ -405,10 +430,16 @@ export default function PrintWeekPages({
           </div>
 
           <div className="flex-1 flex flex-col gap-2">
-            {sectionsOrder.map(key => {
-              const Section = SECTION_COMPONENTS[key]
-              return Section ? <Section key={key} /> : null
-            })}
+            {sectionsOrder.map(key => (
+              <div key={key}>
+                {(() => {
+                  const Section = SECTION_COMPONENTS[key]
+                  return Section ? <Section /> : null
+                })()}
+                {/* Cliniques/évaluations suit toujours les Notes, comme dans le template original */}
+                {key === 'notes' && <div className="mt-2"><CliniquesSection /></div>}
+              </div>
+            ))}
           </div>
         </div>
       </div>
