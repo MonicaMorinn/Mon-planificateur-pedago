@@ -62,6 +62,12 @@ export default function ExportPage() {
     setGenerating(true)
     try {
       const endpoint = options.format === 'pdf' ? '/api/export/pdf' : '/api/export/word'
+      const filename = options.format === 'pdf'
+        ? `agenda-${selectedYear}.pdf`
+        : `Mon-Agenda-Pedago_${selectedYear}.docx`
+      const mimeType = options.format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -79,22 +85,42 @@ export default function ExportPage() {
         throw new Error('Erreur lors de la génération')
       }
 
-      // Récupérer le contenu du fichier
       const blob = await response.blob()
 
-      // Créer une URL et télécharger
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = options.format === 'pdf' 
-        ? `agenda-${selectedYear}.pdf`
-        : `agenda-${selectedYear}.docx`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      // Sur iPhone/iPad (et certains Android), le téléchargement via lien
+      // <a download> est peu fiable dans Safari (le fichier s'ouvre en
+      // aperçu ou disparaît silencieusement). On utilise donc en priorité
+      // le partage natif du système, qui propose « Enregistrer dans
+      // Fichiers » de façon fiable. On revient au téléchargement classique
+      // si le partage de fichiers n'est pas disponible (desktop, etc.).
+      const file = new File([blob], filename, { type: mimeType })
+      const nav = navigator as any
+      const canUseShare = typeof nav.canShare === 'function' && nav.canShare({ files: [file] })
 
-      toast.success('Fichier téléchargé!')
+      if (canUseShare) {
+        try {
+          await nav.share({
+            files: [file],
+            title: filename
+          })
+          toast.success('Choisis « Enregistrer dans Fichiers » dans le menu')
+        } catch (shareErr: any) {
+          // L'utilisateur a annulé le partage : ce n'est pas une erreur.
+          if (shareErr?.name !== 'AbortError') {
+            throw shareErr
+          }
+        }
+      } else {
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = filename
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        toast.success('Fichier téléchargé!')
+      }
     } catch (error) {
       console.error(error)
       toast.error('Erreur lors de la génération du fichier')
