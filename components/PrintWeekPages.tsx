@@ -2,6 +2,7 @@
 
 import { getDayName, getMonthName, formatDate, getWeekDays, isSameDay, addDays } from '@/lib/utils'
 import { HOLIDAY_GRAY, HOLIDAY_GRAY_BORDER } from '@/lib/colors'
+import { buildWeekRows, formatTimeFr, NO_STUDENT_TYPES, buildMonthCells, type WeekRow } from '@/lib/weekPlanner'
 
 interface ScheduleBlock {
   id: string
@@ -62,18 +63,6 @@ interface Props {
 
 const DAY_INDEXES = [0, 1, 2, 3, 4] // Lundi..Vendredi
 
-// Types de blocs qui occupent toute la largeur (partagés entre toutes les
-// journées affichées sur la page), comme dans le template original :
-// récréation, dîners multiples, période d'organisation.
-const FULL_WIDTH_TYPES = ['Récréation', 'Dîner', 'Organisation', 'Transition', 'Accueil']
-
-// Convertit "08:15" -> "8h15", "09:00" -> "9h", "14:55" -> "14h55"
-function formatTimeFr(hhmm: string): string {
-  const [hStr, mStr] = hhmm.split(':')
-  const h = parseInt(hStr, 10)
-  return mStr === '00' ? `${h}h` : `${h}h${mStr}`
-}
-
 export default function PrintWeekPages({
   monday,
   schedule,
@@ -105,7 +94,6 @@ export default function PrintWeekPages({
 
   // Types DSFS qui indiquent une journée sans élèves : toute la colonne
   // doit alors être grisée (gris très pâle), à l'écran et à l'impression.
-  const NO_STUDENT_TYPES = ['conge', 'pedagogique', 'administrative', 'perfectionnement']
   const isDayOff = (day: Date) =>
     dsfsForDay(day).some(e => e.type && NO_STUDENT_TYPES.includes(e.type))
 
@@ -115,38 +103,10 @@ export default function PrintWeekPages({
   const borderColor = bw ? 'border-black' : 'border-gray-300'
   const headerBg = bw ? '#fff' : '#F7F5F1'
 
-  // ── Construction des rangées du tableau horaire ──────────────────────
-  interface Row {
-    startTime: string
-    endTime: string
-    name: string
-    type: string
-    fullWidth: boolean
-    perDay: Record<number, ScheduleBlock | undefined>
-  }
-
-  function buildRows(dayIndexes: number[]): Row[] {
-    const allBlocks = dayIndexes.flatMap(di => blocksForDay(di))
-    const startTimes = Array.from(new Set(allBlocks.map(b => b.startTime))).sort()
-
-    return startTimes.map(st => {
-      const perDay: Record<number, ScheduleBlock | undefined> = {}
-      dayIndexes.forEach(di => {
-        perDay[di] = blocksForDay(di).find(b => b.startTime === st)
-      })
-      const present = Object.values(perDay).filter(Boolean) as ScheduleBlock[]
-      const reference = present[0]
-      const fullWidth = present.length > 0 && present.every(b => FULL_WIDTH_TYPES.includes(b.type))
-      return {
-        startTime: st,
-        endTime: reference?.endTime || st,
-        name: reference?.name || '',
-        type: reference?.type || '',
-        fullWidth,
-        perDay
-      }
-    })
-  }
+  // Construction des rangées : logique partagée avec les exports PDF/Word
+  // (lib/weekPlanner.ts) pour que site, impression, PDF et Word montrent
+  // toujours exactement la même chose.
+  const buildRows = (dayIndexes: number[]): WeekRow[] => buildWeekRows(schedule?.blocks || [], dayIndexes)
 
   const ScheduleTable = ({ dayIndexes }: { dayIndexes: number[] }) => {
     const rows = buildRows(dayIndexes)
@@ -281,19 +241,10 @@ export default function PrintWeekPages({
   }
 
   // ── Mini calendrier du mois ────────────────────────────────────────
-  const monthDate = addDays(monday, 3)
-  const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
-  const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)
-  const firstWeekday = (monthStart.getDay() + 6) % 7 // 0 = Lundi
-  const daysInMonth = monthEnd.getDate()
-  const monthCells: (number | null)[] = [
-    ...Array(firstWeekday).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  ]
-  const allMonthEvents = [...events, ...dsfsEvents].filter(e => {
-    const d = new Date(e.date)
-    return d.getMonth() === monthDate.getMonth() && d.getFullYear() === monthDate.getFullYear()
-  })
+  // Utilise la même fonction que PDF et Word (lib/weekPlanner.ts) pour
+  // garantir un rendu identique partout : mêmes 3 raisons réelles de
+  // surlignage (semaine affichée, congé, événement officiel).
+  const { monthLabel: monthDate, cells: sharedMonthCells } = buildMonthCells(monday, weekDays, dsfsEvents)
 
   const CalendarSection = () => (
     <div className={`border ${borderColor} rounded p-2 print-avoid-break`}>
@@ -304,25 +255,19 @@ export default function PrintWeekPages({
         {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
           <div key={i} className="font-semibold">{d}</div>
         ))}
-        {monthCells.map((day, i) => {
-          if (!day) return <div key={i} />
-          const cellDate = new Date(monthDate.getFullYear(), monthDate.getMonth(), day)
-          // Trois raisons réelles de mettre une date en évidence, rien d'autre :
-          const dayIsOff = dsfsForDay(cellDate).some(e => e.type && NO_STUDENT_TYPES.includes(e.type))
-          const isCurrentWeek = weekDays.some(w => w.getDate() === day && w.getMonth() === monthDate.getMonth() && w.getFullYear() === monthDate.getFullYear())
-          const hasOfficialEvent = dsfsForDay(cellDate).length > 0 && !dayIsOff
-
+        {sharedMonthCells.map((cell, i) => {
+          if (!cell.day) return <div key={i} />
           return (
             <div
               key={i}
-              className={`relative p-0.5 rounded ${isCurrentWeek ? `border ${bw ? 'border-black' : ''}` : ''}`}
+              className={`relative p-0.5 rounded ${cell.isCurrentWeek ? `border ${bw ? 'border-black' : ''}` : ''}`}
               style={{
-                backgroundColor: dayIsOff ? HOLIDAY_GRAY : undefined,
-                borderColor: isCurrentWeek && !bw ? primaryColor : undefined
+                backgroundColor: cell.isDayOff ? HOLIDAY_GRAY : undefined,
+                borderColor: cell.isCurrentWeek && !bw ? primaryColor : undefined
               }}
             >
-              {day}
-              {hasOfficialEvent && (
+              {cell.day}
+              {cell.hasOfficialEvent && (
                 <span
                   className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
                   style={{ backgroundColor: bw ? '#000' : primaryColor }}
