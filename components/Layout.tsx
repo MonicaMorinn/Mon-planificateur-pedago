@@ -20,6 +20,7 @@ import {
   Share2,
   Download,
   School,
+  Presentation,
 } from 'lucide-react'
 
 interface LayoutProps {
@@ -59,6 +60,7 @@ export default function Layout({ children, authenticated = false }: LayoutProps)
     { icon: Home, label: 'Tableau de bord', href: '/dashboard' },
     { icon: Calendar, label: 'Calendrier', href: '/calendar' },
     { icon: School, label: 'Calendrier DSFS', href: '/dsfs' },
+    { icon: Presentation, label: 'Mes PowerPoints', href: '/presentations' },
     { icon: Clock, label: 'Horaire', href: '/schedule' },
     { icon: BookOpen, label: 'Planification', href: '/planning' },
     { icon: CheckSquare, label: 'Tâches', href: '/tasks' },

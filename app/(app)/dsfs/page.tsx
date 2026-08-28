@@ -33,6 +33,7 @@ export default function DsfsPage() {
   const [events, setEvents] = useState<DsfsEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [seeding, setSeeding] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     title: '',
@@ -128,6 +129,82 @@ export default function DsfsPage() {
     }
   }
 
+  // Dates 2026-2027 confirmées directement par l'utilisatrice (jamais devinées).
+  const CONFIRMED_2026_2027 = [
+    { title: 'Journée administrative', date: '2026-08-31', type: 'administrative' },
+    { title: 'Perfectionnement AEFNB', date: '2026-09-01', type: 'perfectionnement' },
+    { title: 'PAQ', date: '2026-09-02', type: 'administrative' },
+    { title: 'Fête du Travail', date: '2026-09-07', type: 'conge' },
+    { title: 'Rentrée progressive', date: '2026-09-08', type: 'rentree-progressive' },
+    { title: 'Rentrée progressive', date: '2026-09-09', type: 'rentree-progressive' },
+    { title: 'Rentrée progressive', date: '2026-09-10', type: 'rentree-progressive' },
+    { title: 'Rentrée progressive', date: '2026-09-11', type: 'rentree-progressive' },
+    { title: 'Congé de mars', date: '2027-03-01', type: 'conge' },
+    { title: 'Congé de mars', date: '2027-03-02', type: 'conge' },
+    { title: 'Congé de mars', date: '2027-03-03', type: 'conge' },
+    { title: 'Congé de mars', date: '2027-03-04', type: 'conge' },
+    { title: 'Congé de mars', date: '2027-03-05', type: 'conge' },
+    { title: 'Dernière journée de classe', date: '2027-06-25', type: 'autre' },
+  ]
+
+  const handleSeed2026 = async () => {
+    setSeeding(true)
+    try {
+      const existingDates = new Set(events.map(e => new Date(e.date).toISOString().split('T')[0]))
+      const toAdd = CONFIRMED_2026_2027.filter(e => !existingDates.has(e.date))
+      if (toAdd.length === 0) {
+        toast('Ces dates sont déjà toutes présentes.')
+        return
+      }
+      for (const e of toAdd) {
+        await fetch('/api/dsfs-events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ ...e, schoolYearId })
+        })
+      }
+      toast.success(`${toAdd.length} date(s) ajoutée(s)`)
+      loadData()
+    } catch (e) {
+      console.error(e)
+      toast.error('Erreur lors de l\'ajout')
+    } finally {
+      setSeeding(false)
+    }
+  }
+
+  const handleCsvImport = async (file: File) => {
+    try {
+      const text = await file.text()
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+      const validTypes = TYPES.map(t => t.value)
+      const rows = lines.map(line => {
+        const [date, title, type] = line.split(',').map(s => s?.trim())
+        return { date, title, type: validTypes.includes(type) ? type : 'autre' }
+      }).filter(r => r.date && r.title && /^\d{4}-\d{2}-\d{2}$/.test(r.date))
+
+      if (rows.length === 0) {
+        toast.error('Aucune ligne valide trouvée dans le fichier (format attendu: date,titre,type)')
+        return
+      }
+
+      if (!window.confirm(`${rows.length} événement(s) détecté(s). Les ajouter au calendrier ${schoolYearName} ?`)) return
+
+      for (const r of rows) {
+        await fetch('/api/dsfs-events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ ...r, schoolYearId })
+        })
+      }
+      toast.success(`${rows.length} événement(s) importé(s)`)
+      loadData()
+    } catch (e) {
+      console.error(e)
+      toast.error('Erreur lors de l\'import du fichier')
+    }
+  }
+
   const typeLabel = (v: string) => TYPES.find(t => t.value === v)?.label || v
 
   if (loading) {
@@ -171,6 +248,28 @@ export default function DsfsPage() {
           >
             Consulter le calendrier officiel de mon école <ExternalLink size={14} />
           </a>
+        </div>
+
+        {schoolYearName === '2026-2027' && (
+          <div className="bg-white rounded-2xl p-4 shadow-lg flex items-center justify-between gap-4">
+            <div>
+              <p className="font-semibold text-sm">Dates 2026-2027 déjà confirmées</p>
+              <p className="text-xs text-gray-500">Journée administrative, PAQ, perfectionnement, rentrée progressive, Fête du travail, congé de mars, dernière journée — celles que tu m'as toi-même confirmées.</p>
+            </div>
+            <button
+              onClick={handleSeed2026}
+              disabled={seeding}
+              className="flex-shrink-0 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 text-sm"
+            >
+              {seeding ? 'Ajout...' : 'Ajouter ces dates'}
+            </button>
+          </div>
+        )}
+
+        <div className="bg-white rounded-2xl p-4 shadow-lg">
+          <p className="font-semibold text-sm mb-2">Importer une liste (CSV)</p>
+          <p className="text-xs text-gray-500 mb-2">Format : <code>date,titre,type</code> par ligne (ex: <code>2026-09-07,Fête du travail,conge</code>). Types valides : conge, pedagogique, administrative, perfectionnement, rentree-progressive, autre.</p>
+          <input type="file" accept=".csv,text/csv" onChange={(e) => e.target.files?.[0] && handleCsvImport(e.target.files[0])} className="text-sm" />
         </div>
 
         {showForm && (

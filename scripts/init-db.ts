@@ -105,6 +105,17 @@ CREATE TABLE IF NOT EXISTS "DsfsEvent" (
   FOREIGN KEY ("schoolYearId") REFERENCES "SchoolYear"("id") ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS "Presentation" (
+  "id" TEXT PRIMARY KEY,
+  "userId" TEXT NOT NULL,
+  "title" TEXT NOT NULL,
+  "subject" TEXT,
+  "fileName" TEXT NOT NULL,
+  "dataUrl" TEXT NOT NULL,
+  "createdAt" DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE
+);
+
 -- SchoolYear
 CREATE TABLE IF NOT EXISTS "SchoolYear" (
   "id" TEXT PRIMARY KEY,

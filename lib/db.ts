@@ -95,6 +95,16 @@ function ensureSchema(database: Database.Database) {
       "createdAt" DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY ("schoolYearId") REFERENCES "SchoolYear"("id") ON DELETE CASCADE
     );
+    CREATE TABLE IF NOT EXISTS "Presentation" (
+      "id" TEXT PRIMARY KEY,
+      "userId" TEXT NOT NULL,
+      "title" TEXT NOT NULL,
+      "subject" TEXT,
+      "fileName" TEXT NOT NULL,
+      "dataUrl" TEXT NOT NULL,
+      "createdAt" DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE
+    );
     CREATE TABLE IF NOT EXISTS "SchoolYear" (
       "id" TEXT PRIMARY KEY,
       "userId" TEXT NOT NULL,
@@ -338,6 +348,23 @@ function runMigrations(database: Database.Database) {
   } catch (e) {
     console.error('Migration DsfsEvent.type échouée:', e)
   }
+
+  try {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS "Presentation" (
+        "id" TEXT PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "subject" TEXT,
+        "fileName" TEXT NOT NULL,
+        "dataUrl" TEXT NOT NULL,
+        "createdAt" DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE
+      );
+    `)
+  } catch (e) {
+    console.error('Migration Presentation échouée:', e)
+  }
 }
 
 let db: Database.Database | null = null
@@ -392,6 +419,7 @@ const DATE_FIELDS: Record<string, string[]> = {
   Notification: ['createdAt'],
   Surveillance: ['createdAt', 'updatedAt', 'date'],
   CustomFont: ['createdAt'],
+  Presentation: ['createdAt'],
   DsfsEvent: ['createdAt', 'date'],
 }
 
@@ -978,6 +1006,7 @@ const MODEL_TABLE_MAP: Record<string, string> = {
   notification: 'Notification',
   surveillance: 'Surveillance',
   customFont: 'CustomFont',
+  presentation: 'Presentation',
   dsfsEvent: 'DsfsEvent',
 }
 
