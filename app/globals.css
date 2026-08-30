@@ -55,6 +55,17 @@ textarea:disabled {
   display: block;
 }
 
+/* Aperçu à l'écran : simule les proportions d'une page A4 paysage, pour que
+   ce que la personne voit avant d'imprimer corresponde à ce qui sera
+   réellement imprimé (et au PDF, qui utilise aussi le format paysage). */
+.print-page {
+  aspect-ratio: 297 / 210;
+  max-width: 1100px;
+  margin: 0 auto 24px auto;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e5e5;
+}
+
 @media print {
   .no-print {
     display: none !important;
@@ -84,8 +95,8 @@ textarea:disabled {
   }
 
   @page {
-    size: portrait;
-    margin: 12mm;
+    size: landscape;
+    margin: 10mm;
   }
 }
 

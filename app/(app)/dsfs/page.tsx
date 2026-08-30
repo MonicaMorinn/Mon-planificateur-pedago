@@ -129,22 +129,53 @@ export default function DsfsPage() {
     }
   }
 
-  // Dates 2026-2027 confirmées directement par l'utilisatrice (jamais devinées).
+  // Dates 2026-2027 confirmées : les 8 premières viennent directement de
+  // toi (chat), le reste est lu sur le calendrier officiel DSFS (image
+  // "Champlain, Claudette-Bradshaw, L'Odyssée, Le Mascaret, Le Sommet,
+  // Sainte-Bernadette, Saint-Henri") que tu as téléversée. Les journées
+  // "horaire du vendredi" (dispersées, normal) ne sont pas incluses ici
+  // car elles ne changent pas le statut congé/classe d'une journée.
   const CONFIRMED_2026_2027 = [
     { title: 'Journée administrative', date: '2026-08-31', type: 'administrative' },
     { title: 'Perfectionnement AEFNB', date: '2026-09-01', type: 'perfectionnement' },
     { title: 'PAQ', date: '2026-09-02', type: 'administrative' },
     { title: 'Fête du Travail', date: '2026-09-07', type: 'conge' },
-    { title: 'Rentrée progressive', date: '2026-09-08', type: 'rentree-progressive' },
+    { title: '1ère journée de classe pour les élèves', date: '2026-09-08', type: 'autre' },
     { title: 'Rentrée progressive', date: '2026-09-09', type: 'rentree-progressive' },
     { title: 'Rentrée progressive', date: '2026-09-10', type: 'rentree-progressive' },
     { title: 'Rentrée progressive', date: '2026-09-11', type: 'rentree-progressive' },
+    { title: 'Journée nationale de la vérité et de la réconciliation', date: '2026-09-30', type: 'conge' },
+    { title: 'Action de grâce', date: '2026-10-12', type: 'conge' },
+    { title: 'Congé pour tous les élèves', date: '2026-10-23', type: 'conge' },
+    { title: 'Jour du Souvenir', date: '2026-11-11', type: 'conge' },
+    { title: 'Congé pour tous les élèves', date: '2026-11-20', type: 'conge' },
+    { title: 'Congé pour tous les élèves', date: '2026-12-04', type: 'conge' },
+    { title: 'Vacances de Noël', date: '2026-12-21', type: 'conge' },
+    { title: 'Vacances de Noël', date: '2026-12-22', type: 'conge' },
+    { title: 'Vacances de Noël', date: '2026-12-23', type: 'conge' },
+    { title: 'Vacances de Noël', date: '2026-12-24', type: 'conge' },
+    { title: 'Vacances de Noël', date: '2026-12-25', type: 'conge' },
+    { title: 'Vacances de Noël', date: '2026-12-28', type: 'conge' },
+    { title: 'Vacances de Noël', date: '2026-12-29', type: 'conge' },
+    { title: 'Vacances de Noël', date: '2026-12-30', type: 'conge' },
+    { title: 'Vacances de Noël', date: '2026-12-31', type: 'conge' },
+    { title: "Jour de l'An", date: '2027-01-01', type: 'conge' },
+    { title: 'Congé pour tous les élèves', date: '2027-01-15', type: 'conge' },
+    { title: 'Congé (secondaire seulement)', date: '2027-02-01', type: 'autre' },
+    { title: 'Congé pour tous les élèves', date: '2027-02-12', type: 'conge' },
+    { title: 'Fête de la famille', date: '2027-02-15', type: 'conge' },
     { title: 'Congé de mars', date: '2027-03-01', type: 'conge' },
     { title: 'Congé de mars', date: '2027-03-02', type: 'conge' },
     { title: 'Congé de mars', date: '2027-03-03', type: 'conge' },
     { title: 'Congé de mars', date: '2027-03-04', type: 'conge' },
     { title: 'Congé de mars', date: '2027-03-05', type: 'conge' },
-    { title: 'Dernière journée de classe', date: '2027-06-25', type: 'autre' },
+    { title: 'Vendredi saint', date: '2027-04-02', type: 'conge' },
+    { title: 'Congé pour tous les élèves', date: '2027-04-24', type: 'conge' },
+    { title: 'Congé pour tous les élèves', date: '2027-05-07', type: 'conge' },
+    { title: 'Congé pour tous les élèves', date: '2027-05-21', type: 'conge' },
+    { title: 'Fête de la Reine', date: '2027-05-24', type: 'conge' },
+    { title: 'Congé (primaire seulement)', date: '2027-06-18', type: 'conge' },
+    { title: 'Dernière journée de classe pour les élèves', date: '2027-06-25', type: 'autre' },
   ]
 
   const handleSeed2026 = async () => {
